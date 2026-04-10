@@ -4,6 +4,18 @@ Sonar is a Claude Code plugin that gives coding agents codebase situational awar
 
 ---
 
+## Install via Claude Code
+
+Copy and paste this into Claude Code:
+
+```
+Please install this Claude Code plugin: https://github.com/goldfish-1x/sonar
+```
+
+Claude Code will handle the rest. After it confirms installation, run `/reload-plugins` or restart Claude Code to activate.
+
+---
+
 ## Requirements
 
 Check these before installing. Sonar will fail silently if Node is missing.
