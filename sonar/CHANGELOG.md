@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.8 — 2026-04-10
+
+- Fixed hooks not firing on Linux — new `run.sh` wrapper auto-detects node from nvm, fnm, volta, asdf, and common system paths
+- Updated all command references to correct `sonar:sonar-*` format (e.g. `/sonar:sonar-crawl`, `/sonar:sonar-explore`)
+- Updated CLAUDE.md with correct command names so agents invoke them properly
+- README: improved Node PATH guidance, documents auto-detection
+
 ## 0.5.7 — 2026-04-10
 
 - Test files, key invariants, and verification commands now injected into agent context automatically

@@ -1,152 +1,174 @@
 # Sonar — Codebase Cartographer
 
-Sonar is a Claude Code plugin that builds a persistent understanding graph of any codebase. It gives coding agents **situational awareness** — injecting the right module context, conventions, and dependency warnings automatically so agents write code that fits the architecture instead of fighting it.
-
-Without Sonar, agents discover your codebase by reading files one at a time. With Sonar, they start with a briefing: which modules matter, what rules apply, what depends on what, and where they're likely to make mistakes.
+Sonar is a Claude Code plugin that gives coding agents codebase situational awareness. It builds a persistent understanding graph of any codebase and injects relevant context automatically — which modules matter, what conventions apply, what depends on what, and what tests to run — so agents write code that fits the architecture instead of fighting it.
 
 ---
 
-## Install
+## Requirements
 
-### If you are a Claude agent installing this for a user
+Check these before installing. Sonar will fail silently if Node is missing.
 
-Run these two commands exactly:
+```bash
+node --version    # must be 18 or higher
+git --version     # any recent version
+```
+
+**If Node is missing or below v18:**
+
+macOS:
+```bash
+brew install node
+```
+
+Linux (no sudo):
+```bash
+curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz \
+  | tar -xJ -C ~/.local --strip-components=1
+export PATH="$HOME/.local/bin:$PATH"
+node --version   # verify before continuing
+```
+
+Linux (with sudo):
+```bash
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+> **Node on PATH:** Sonar hooks run in a non-interactive shell that does not source `.bashrc` or `.profile`. If Node was installed via a version manager (nvm, fnm, volta, asdf), it may not be on the PATH the hook sees. Sonar's hook runner auto-detects common install locations for nvm, fnm, volta, asdf, and `~/.local/bin`. If hooks still fail, use a system-wide Node install (Homebrew, apt) which puts Node on a PATH visible to all processes.
+
+---
+
+## Installing Sonar
+
+### Step 1 — Add the marketplace and install
 
 ```bash
 claude plugin marketplace add goldfish-1x/sonar
 claude plugin install sonar
 ```
 
-Then tell the user:
+If SSH to GitHub fails, use HTTPS:
+```bash
+claude plugin marketplace add https://github.com/goldfish-1x/sonar
+claude plugin install sonar
+```
 
-> Sonar is installed. **Restart Claude Code or run `/reload-plugins`** to activate it. After reloading, run `/sonar status` in any project to confirm it's working.
-
-Verify the install succeeded:
+### Step 2 — Verify the install succeeded
 
 ```bash
 claude plugin list
 ```
 
-You should see `sonar` in the output. If either command fails, check that the user has an active internet connection and SSH access to GitHub (or try HTTPS: `claude plugin marketplace add https://github.com/goldfish-1x/sonar`).
+`sonar` must appear in the output. If it doesn't, re-run Step 1.
 
-### If you are a human installing manually
+### Step 3 — Reload plugins
 
-```bash
-claude plugin marketplace add goldfish-1x/sonar
-claude plugin install sonar
+Tell the user:
+
+> Sonar is installed. Please run `/reload-plugins` or restart Claude Code to activate it. Tell me when you're done and I'll run a health check.
+
+Wait for confirmation before continuing.
+
+### Step 4 — Health check (after reload)
+
+```
+/sonar:sonar-version
 ```
 
-Restart Claude Code or run `/reload-plugins` to activate. That's it — Sonar works in every project directory from that point on.
+Expected: version number, install path, and update status. Any error here means the plugin didn't load — check that Node is on PATH.
+
+```
+/sonar:sonar-status
+```
+
+Expected: map state for the current project. "No map" is fine on first use — it means Sonar is running but hasn't crawled yet. Hook errors or "node not found" mean the PATH issue from Step 1 wasn't resolved.
+
+If both commands return output without errors, Sonar is healthy and ready.
 
 ---
 
-## First Use
+## Using Sonar
 
-**You don't need to run `/sonar crawl` first.** Drop into any project and ask:
+### The core workflow
 
-```bash
-/sonar "add rate limiting to the API"
-```
-
-Sonar auto-detects that no map exists, runs a fast targeted scan (~5 seconds), then analyzes only the modules relevant to your task (~2-3 min). Results are cached — future queries reuse what's already been analyzed.
-
-When you want **full coverage** of the entire codebase (one-time, ~10-30 min):
-
-```bash
-/sonar crawl
-```
-
-Commit the output to git so your whole team shares the same map — then nobody has to crawl again.
-
----
-
-## How It Works
-
-Sonar builds understanding in four phases:
-
-1. **Skeleton** — static analysis: file graph, imports/exports, module boundaries (~5 sec)
-2. **Module cards** — parallel LLM analysis of every module: purpose, business rules, conventions, public API, side effects
-3. **Flow narratives** — traces entry-to-exit data paths with invariants and failure modes
-4. **System synthesis** — domain model, architecture patterns, load-bearing modules, domain overlaps, tensions
-
-Everything is stored in `.sonar/` — JSON cards designed to be **committed to git** so the whole team shares the same map.
-
----
-
-## How to Use It Effectively
-
-### 1. Orient before you code
-
-When you receive a task, your instinct is to start reading files. Stop — ask Sonar first:
+**Always orient before you code.** When you receive a task, run this first:
 
 ```
-/sonar "add webhook support to the notification system"
+/sonar:sonar <task description>
 ```
 
-You get in seconds what would take 10-15 minutes of exploration:
-- Which modules are involved and what they do
-- What conventions you must follow
-- What depends on what you're about to change
-- What flows pass through the area you're touching
+This gives you in seconds what would take 10-15 minutes of file exploration: which modules are involved, what conventions you must follow, what depends on what you're changing, and what tests to run. Read the briefing before reading any code.
 
-**Read the briefing before you read any code.** It tells you where to look and what matters.
+**No map yet?** That's fine. Run the same command — Sonar will auto-scan the relevant modules on demand (~2-3 min) and cache the results.
 
-### 2. Explore strategies before committing to one
-
-For any non-trivial feature, don't jump to the first approach that comes to mind:
+**Want full coverage?** Run a one-time crawl:
 
 ```
-/sonar explore "webhook support for the notification system"
+/sonar:sonar-crawl
 ```
 
-This spawns parallel agents that simulate 3-4 different implementation strategies against the real codebase graph. Each is evaluated for what it reuses, what it breaks, what conventions it follows or violates, and what risks it carries. You get a comparative report.
+This takes 10-30 min depending on codebase size and builds a complete map. Commit the output to git (`.sonar/modules/`, `.sonar/flows/`, `.sonar/system.json`, `.sonar/skeleton.json`, `.sonar/meta.json`) so the whole team shares it.
 
-**Skip this for:** bug fixes, simple additions, or tasks where the approach is obvious.
-
-### 3. Check impact before risky changes
-
-Once you've chosen an approach, before you write code:
-
-```
-/sonar impact "replace synchronous auth checks with middleware"
-```
-
-Shows 1st order (direct breakage), 2nd order (testing needed), 3rd order (awareness). Also checks if your approach violates conventions in the affected modules.
-
-### 4. Let hooks do the rest automatically
+### What happens automatically
 
 Six hooks fire without you doing anything:
 
-- **Session start** — auto-refreshes the skeleton when git HEAD has moved since the last session
-- **On every prompt** — searches the map and injects relevant module context, conventions with check commands, business rules with source locations, and flow invariants
-- **On every file edit** — warns when the file you're editing has dependents you haven't been briefed on; flags load-bearing modules and domain overlaps
-- **Post-edit convention check** — runs the module's check commands after each edit and reports violations inline
-- **Ripple Guard** — when you change an exported symbol's signature, tracks which importers need updating and counts down: "Breaking change: 4 files need updating" → "1/4" → "All Clear (4/4)"
-- **Session end safety net** — warns if you're about to finish with unresolved breaking changes
+- **Session start** — refreshes the skeleton if git HEAD moved since last session
+- **Every prompt** — injects relevant module context, conventions with check commands, business rules with source locations, test files, and flow invariants
+- **Every file edit** — warns when the file has unreviewed dependents, flags load-bearing modules and domain overlaps
+- **Post-edit** — runs the module's convention check commands and reports violations inline
+- **Ripple Guard** — detects changed export signatures, tracks which importers need updating, counts down to "All Clear"
+- **Session end** — warns if you're finishing with unresolved breaking changes
 
-### 5. Verify before you push
+When the prompt hook injects context, read it. It's showing you something you probably haven't seen.
 
-```
-/sonar verify
-```
-
-Runs the convention check commands automatically. Tells you what passed, what failed, and what needs manual review. Catches convention violations that tests don't.
-
-### 6. Pre-review blast radius
-
-Before running a code review:
+### Decision tree
 
 ```
-/sonar review-context
+Task arrives
+  │
+  ├─ /sonar:sonar <task>              ← always start here
+  │
+  ├─ Non-trivial feature?
+  │   YES → /sonar:sonar-explore      ← 3-4 parallel strategy simulations
+  │
+  ├─ Risky change?
+  │   YES → /sonar:sonar-impact       ← 1st/2nd/3rd order cascade
+  │
+  ├─ Implement
+  │   (hooks warn automatically)
+  │
+  ├─ /sonar:sonar-verify              ← convention check before pushing
+  │
+  └─ Before review?
+      YES → /sonar:sonar-review-context
 ```
 
-Maps every changed file to its module, runs a 3-hop blast radius query, checks conventions on changed files, and surfaces business rules and flow invariants at risk. Loads this context before the reviewer sees the diff.
+### Commands
+
+| Command | When to use | What it does |
+|---------|-------------|-------------|
+| `/sonar:sonar <task or question>` | Start of every task | Briefing, Q&A, or path trace. Works without a map. |
+| `/sonar:sonar-explore <feature>` | Planning non-trivial features | Parallel strategy simulation — 3-4 approaches with tradeoffs |
+| `/sonar:sonar-impact <change>` | Before risky changes | 1st/2nd/3rd order cascading effects |
+| `/sonar:sonar-verify` | After changes, before push | Runs convention check commands + dependency verification |
+| `/sonar:sonar-review-context [base]` | Before code review | Blast radius + convention checks for the branch diff. `base` defaults to `main` |
+| `/sonar:sonar-blast <module>` | Investigating dependencies | Full reverse dependency tree |
+| `/sonar:sonar-delete <target>` | Removing a feature | Precise deletion surface: what to delete, edit, keep |
+| `/sonar:sonar-graph [module]` | Visualizing structure | Interactive dependency graph |
+| `/sonar:sonar-wiki [port]` | Browsing the map | Local knowledge workspace with search |
+| `/sonar:sonar-crawl` | First-time setup | Full 4-phase parallel analysis |
+| `/sonar:sonar-update` | After pulling / after refactor | Incremental refresh — only changed modules (2-3 min) |
+| `/sonar:sonar-status` | Checking health | Map freshness, coverage, stale modules |
+| `/sonar:sonar-verify-map` | Auditing accuracy | Spot-checks cards against actual code |
+| `/sonar:sonar-version` | Checking for updates | Installed version, commit SHA, update status |
+| `/sonar:sonar-reset` | Starting over | Deletes `.sonar/` completely |
 
 ---
 
 ## Configuration
 
-Create a `sonar.config.json` in your project root to override defaults. All fields are optional — Sonar works without one.
+Create `sonar.config.json` in the project root to override defaults. All fields are optional.
 
 ```json
 {
@@ -156,16 +178,9 @@ Create a `sonar.config.json` in your project root to override defaults. All fiel
     "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".py"]
   },
   "modules": {
-    "aliases": {
-      "@app": "src/app",
-      "@shared": "src/shared"
-    },
+    "aliases": { "@app": "src/app", "@shared": "src/shared" },
     "roots": ["packages/*", "apps/*"],
-    "manual_boundaries": ["src/core"],
-    "grouping": {
-      "prefer_package_boundaries": true,
-      "prefer_src_feature_roots": true
-    }
+    "manual_boundaries": ["src/core"]
   },
   "retrieval": {
     "max_modules": 3,
@@ -179,78 +194,32 @@ Create a `sonar.config.json` in your project root to override defaults. All fiel
 }
 ```
 
-### Most useful options
+**Key options:**
 
-**`sources.include` / `sources.exclude`** — control what Sonar scans. Add `"**/generated/**"` or `"**/vendor/**"` to exclude directories that inflate the module count without adding signal.
-
-**`sources.extensions`** — add `.go`, `.rb`, `.java` etc. for non-JS codebases (skeleton analysis is language-agnostic; LLM analysis works on any language).
-
-**`modules.aliases`** — map TypeScript/webpack path aliases to real directories so Sonar resolves imports correctly. Without this, aliased imports show as unresolved edges in the dependency graph.
-
-**`modules.roots`** — tells Sonar where top-level module boundaries are. For a monorepo: `["packages/*", "apps/*"]`. For a flat repo: `["src/features/*"]`.
-
-**`modules.manual_boundaries`** — force a directory to be its own module regardless of auto-detection. Useful for shared libraries or core infrastructure that gets split incorrectly.
-
-**`retrieval.max_modules`** — how many modules get injected per prompt (default: 3). Increase to 5 for larger, more interconnected codebases; decrease for smaller repos where noise is a problem.
-
-**`critical.modules`** — modules always treated as load-bearing. Edit warnings and impact analysis will flag these regardless of computed fan-in.
+- `sources.include/exclude` — what gets scanned. Exclude `generated/`, `vendor/` directories that inflate module count without signal.
+- `sources.extensions` — add `.go`, `.rb`, `.java` for non-JS codebases.
+- `modules.aliases` — TypeScript/webpack path aliases. Without this, aliased imports show as unresolved in the dependency graph.
+- `modules.roots` — top-level module boundaries. Monorepo: `["packages/*", "apps/*"]`. Flat repo: `["src/features/*"]`.
+- `retrieval.max_modules` — modules injected per prompt (default: 3). Raise to 5 for large interconnected codebases.
+- `critical.modules` — always treated as load-bearing regardless of computed fan-in.
 
 ---
 
-## Commands
+## What the Map Stores
 
-| Command | When | What it does |
-|---------|------|-------------|
-| `/sonar <task or question>` | Starting any work | Briefing, Q&A, or path trace. Works without a map. |
-| `/sonar explore <feature>` | Planning new features | Parallel strategy simulation — 3-4 approaches, comparative tradeoffs |
-| `/sonar impact <change>` | Before risky changes | 1st/2nd/3rd order cascading effects |
-| `/sonar verify` | After making changes | Runs convention check commands + dependency verification |
-| `/sonar review-context [base]` | Before code review | Blast radius + convention checks for the current branch diff. `base` is the branch to diff against (default: `main`) |
-| `/sonar blast <module>` | Deep-diving a module | Full reverse dependency tree |
-| `/sonar delete <target>` | Removing a feature | Precise deletion surface: what to delete, edit, keep |
-| `/sonar graph [module]` | Visualizing dependencies | Interactive graph workspace (overview, focus, impact, flow, path modes) |
-| `/sonar wiki [port]` | Browsing the map | Local knowledge workspace with typed search and graph views |
-| `/sonar crawl` | Building the map | Full 4-phase parallel analysis (one-time) |
-| `/sonar update` | Refreshing the map | Incremental — only changed modules |
-| `/sonar status` | Checking map health | Freshness, coverage, stale areas |
-| `/sonar verify-map` | Validating map accuracy | Spot-checks cards against actual code |
-| `/sonar version` | Checking plugin version | Installed version, commit SHA, update availability |
-| `/sonar reset` | Starting over | Deletes `.sonar/` completely |
+**Module cards** (`.sonar/modules/*.json`) — purpose, business rules with source file:line, conventions with executable check commands, public API, side effects, test files, key invariants, verification commands.
 
----
+**Flow narratives** (`.sonar/flows/*.json`) — entry-to-exit data paths, invariants that must hold, failure modes.
 
-## What the Map Contains
+**System understanding** (`.sonar/system.json`) — domain model, architecture patterns, load-bearing modules, domain overlaps, tensions.
 
-**Module cards** (`.sonar/modules/*.json`)
-- Purpose and responsibility
-- Business rules with source file:line locations
-- Conventions with executable check commands
-- Public API surface
-- Side effects (I/O, network, DB)
-- Function cards: purpose, callers, callees, error behavior
-
-**Flow narratives** (`.sonar/flows/*.json`)
-- Entry-to-exit data paths with business context
-- Invariants that must always hold
-- Failure modes and recovery paths
-
-**System understanding** (`.sonar/system.json`)
-- Domain model and concepts
-- Architecture patterns and layers
-- Load-bearing modules (high fan-in — change carefully)
-- Domain overlaps (two modules claiming the same concept)
-- Architectural tensions (competing constraints)
-
-**Dependency graph** (`.sonar/graph.db`)
-- SQLite — queryable for blast radius, path traversal, fan-in/fan-out
-- Rebuilt from JSON cards, not committed to git
+**Dependency graph** (`.sonar/graph.db`) — SQLite, rebuilt from cards, not committed to git.
 
 ---
 
 ## Sharing with Your Team
 
-Commit the map to git:
-
+Commit to git:
 ```
 .sonar/modules/
 .sonar/flows/
@@ -259,120 +228,18 @@ Commit the map to git:
 .sonar/meta.json
 ```
 
-Add to `.gitignore`:
-
-```
-.sonar/graph.db
-.sonar/summaries.json
-.sonar/file-modules.json
-.sonar/symbol-imports.json
-.sonar/state.json
-.sonar/partials/
-.sonar/hook-errors.log
-.sonar/usage.jsonl
-```
-
-Sonar writes this `.gitignore` automatically on first use — you don't need to add it manually.
-
-Every developer gets the map on `git pull`. Run `/sonar update` after pulling — it re-analyzes only changed modules, takes 2-3 min, and keeps the map accurate. Derived files (graph.db, partials) rebuild automatically on first use.
+Sonar writes `.sonar/.gitignore` automatically to exclude derived files. Run `/sonar:sonar-update` after pulling to refresh stale cards (2-3 min, only changed modules).
 
 ---
 
-## Map Freshness
+## Platform Support
 
-Sonar tracks which modules have changed since the last crawl. `/sonar update` re-analyzes only changed modules — not the whole codebase. Run it after pulling or after a large refactor.
-
-```bash
-/sonar status   # see what's stale
-/sonar update   # refresh changed modules (2-3 min)
-/sonar crawl    # full rebuild if many modules changed
-```
-
----
-
-## Requirements
-
-All scripts are plain Node.js — no Bun, no Python, no special build tools. If you have Node and Git, Sonar runs.
-
-### Required
-
-| Tool | Why |
-|------|-----|
-| **Claude Code** | Plugin host — hooks, commands, agent spawning |
-| **Node.js 18+** | All hooks and build scripts run as `node` |
-| **Git** | Change detection, staleness tracking, SHA comparison |
-| **SQLite3 CLI** | Session-start cache warmup — pre-installed on macOS and most Linux distros |
-
-### Included (no install needed)
-
-| Package | How it's used |
-|---------|--------------|
-| **better-sqlite3** | Bundled in `node_modules/` — builds the queryable dependency graph. Ships prebuilt binaries for macOS, Linux, and Windows. |
-
-### Optional
-
-| Tool | Why |
-|------|-----|
-| **`gh` CLI** | `/sonar version` — checks for updates against the remote repo |
-
-### Verify your setup
-
-```bash
-node --version      # needs 18+
-git --version
-sqlite3 --version   # pre-installed on macOS/Linux
-```
-
-### Platform support
-
-Sonar has been tested on **macOS with the Claude Code CLI**. Other platforms are expected to work based on how the code is written, but haven't been validated:
+Tested on **macOS with Claude Code CLI**. Other platforms are expected to work but untested:
 
 | Platform | Status | Notes |
 |---|---|---|
 | macOS + Claude Code CLI | ✅ Tested | All features verified |
-| Linux | 🔲 Untested | Should work — same Node + bash stack |
-| Windows (WSL) | 🔲 Untested | Expected to work via WSL |
-| Windows native | ❌ Known gaps | Bash scripts won't run; sqlite3 CLI may be missing |
-| VS Code / Cursor / JetBrains | 🔲 Untested | Claude Code plugins are IDE-agnostic in principle; PATH issues likely |
-
-If you run into issues on other platforms or setups, please open an issue.
-
-**Known risk with IDE extensions: PATH.** When Claude Code runs as an IDE extension, it may inherit a stripped-down PATH that doesn't include Node.js if installed via a version manager (nvm, fnm, volta). Hooks will fail silently. The safest fix is a system-wide Node install:
-
-```bash
-brew install node   # macOS
-```
-
----
-
-## Architecture Overview
-
-```
-/sonar crawl
-    │
-    ├─ Phase 1: Skeleton (static analysis)
-    │   skeleton.json — file graph, imports/exports, module boundaries
-    │
-    ├─ Phase 2: Module cards (parallel agents)
-    │   module-analyst × N → .sonar/modules/{key}.json
-    │   submodule-analyst for large modules (>150 files)
-    │   parent-synthesizer for split module families
-    │
-    ├─ Phase 3: Flow narratives (parallel agents)
-    │   flow-tracer × M → .sonar/flows/{key}.json
-    │
-    └─ Phase 4: System synthesis
-        synthesizer → .sonar/system.json
-
-Post-crawl:
-    agent-briefs build → .sonar/partials/agent-briefs/{key}.json
-    graph.db built from skeleton.json + module cards
-
-Runtime hooks:
-    on-session-start → warm SQLite cache
-    on-prompt → inject relevant context per task
-    on-edit → warn about dependents, load-bearing modules
-    on-convention-check → run check commands post-edit
-    on-ripple → track breaking signature changes
-    on-ripple-stop → safety net at session end
-```
+| Linux | 🔲 Untested | Same Node + bash stack, should work |
+| Windows (WSL) | 🔲 Untested | Expected to work |
+| Windows native | ❌ Known gaps | Bash scripts won't run |
+| VS Code / Cursor / JetBrains | 🔲 Untested | PATH issues likely — use system-wide Node |
