@@ -1,0 +1,15 @@
+{
+  "name": "sonar",
+  "owner": {
+    "name": "Sammy",
+    "url": "https://github.com/goldfish-1x"
+  },
+  "plugins": [
+    {
+      "name": "sonar",
+      "description": "Codebase cartographer — builds a multi-layered understanding graph for agent situational awareness.",
+      "source": "./sonar",
+      "version": "0.5.7"
+    }
+  ]
+}

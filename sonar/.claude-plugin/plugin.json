@@ -1,0 +1,5 @@
+{
+  "name": "sonar",
+  "version": "0.5.7",
+  "description": "Codebase cartographer — builds a multi-layered understanding graph for agent situational awareness."
+}

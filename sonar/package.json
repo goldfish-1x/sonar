@@ -1,0 +1,20 @@
+{
+  "name": "@fishstack/sonar",
+  "version": "0.5.7",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:knowledge": "bun ./scripts/build-knowledge.mjs",
+    "build:wiki": "bun ./scripts/build-wiki.mjs",
+    "serve:wiki": "bun ./scripts/serve-wiki.mjs",
+    "test:knowledge": "bun test test/knowledge-snapshot.test.mjs",
+    "test:workspace": "bun test test/workspace-integration.test.mjs",
+    "test": "bun run test:knowledge && bun run test:workspace",
+    "eval:extractor": "bun ./scripts/eval-extractor.mjs",
+    "eval:retrieval": "bun ./scripts/eval-retrieval.mjs"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "vis-network": "^9.1.13"
+  }
+}
