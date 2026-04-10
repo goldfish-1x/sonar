@@ -161,7 +161,40 @@ function summarizeFactTitle(text, fallback) {
   return words || fallback;
 }
 
-export function buildSystemFacts(system) {
+// Normalize system.json fields that agents sometimes produce as objects instead of arrays.
+function normalizeSystem(system) {
+  if (!system) return system;
+
+  // domain_model: {core_entities: [...], key_relationships: [...]} → [{concept, definition, modules}]
+  if (system.domain_model && !Array.isArray(system.domain_model)) {
+    const entities = system.domain_model.core_entities || [];
+    system = {
+      ...system,
+      domain_model: entities.map(e => ({
+        concept: e.name || e.concept || "",
+        definition: e.description || e.definition || "",
+        modules: e.modules || []
+      }))
+    };
+  }
+
+  // conventions: {language, frameworks, testing, ...} → [{rule, description, scope}]
+  if (system.conventions && !Array.isArray(system.conventions)) {
+    const conv = system.conventions;
+    const items = [];
+    if (conv.language) items.push({ rule: `Language: ${conv.language}`, scope: "global" });
+    if (conv.testing) items.push({ rule: conv.testing, scope: "global" });
+    if (conv.configuration) items.push({ rule: conv.configuration, scope: "global" });
+    if (conv.ipc) items.push({ rule: conv.ipc, scope: "global" });
+    (conv.frameworks || []).forEach(f => items.push({ rule: f, scope: "global" }));
+    system = { ...system, conventions: items };
+  }
+
+  return system;
+}
+
+export function buildSystemFacts(rawSystem) {
+  const system = normalizeSystem(rawSystem);
   const facts = [];
 
   for (const domain of system?.domains || []) {
