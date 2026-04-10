@@ -8,12 +8,35 @@ Without Sonar, agents discover your codebase by reading files one at a time. Wit
 
 ## Install
 
+### If you are a Claude agent installing this for a user
+
+Run these two commands exactly:
+
 ```bash
 claude plugin marketplace add goldfish-1x/sonar
 claude plugin install sonar
 ```
 
-Adding the marketplace first enables auto-updates — Claude Code will notify you when a new version is available. That's it. Sonar activates in every Claude Code session in any project directory.
+Then tell the user:
+
+> Sonar is installed. **Restart Claude Code or run `/reload-plugins`** to activate it. After reloading, run `/sonar status` in any project to confirm it's working.
+
+Verify the install succeeded:
+
+```bash
+claude plugin list
+```
+
+You should see `sonar` in the output. If either command fails, check that the user has an active internet connection and SSH access to GitHub (or try HTTPS: `claude plugin marketplace add https://github.com/goldfish-1x/sonar`).
+
+### If you are a human installing manually
+
+```bash
+claude plugin marketplace add goldfish-1x/sonar
+claude plugin install sonar
+```
+
+Restart Claude Code or run `/reload-plugins` to activate. That's it — Sonar works in every project directory from that point on.
 
 ---
 
