@@ -4,7 +4,9 @@ You have access to Sonar, a codebase understanding system. This guide covers two
 
 ## If Sonar Is Not Yet Installed
 
-If the user asks you to install Sonar, do this autonomously — no need to ask permission for each step:
+### Claude Code
+
+If the user asks you to install Sonar in Claude Code, do this autonomously — no need to ask permission for each step:
 
 **Run via Bash (you do this):**
 ```bash
@@ -27,6 +29,14 @@ Wait for confirmation, then run the health check:
 Both should return without errors. "No map" from `sonar-status` is fine on first use — it means Sonar is running but hasn't crawled yet.
 
 **If Node is missing:** hooks will silently fail. Check with `node --version` (must be v18+). Install via `brew install node` on macOS or `apt-get install nodejs` on Linux.
+
+### Codex
+
+Codex has no CLI install command — the plugin must be installed manually via the Codex app Plugins panel. Tell the user:
+
+> "To install Sonar in Codex: clone https://github.com/goldfish-1x/sonar, open it in the Codex app, open the Plugins panel, choose the FishStack Local marketplace, and install Sonar. Start a new thread when done and I'll handle the rest."
+
+Once the user confirms the plugin is active, run `@sonar sonar-codex-setup` to complete the setup.
 
 ---
 

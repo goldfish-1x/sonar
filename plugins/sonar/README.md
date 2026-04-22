@@ -250,31 +250,25 @@ Today the two agent surfaces differ:
 
 Hook portability details live in [CODEX_PORTABILITY.md](./CODEX_PORTABILITY.md).
 
-### Local install from this repo
+### Installing the plugin (human step — no CLI equivalent)
 
-1. Open this repository in Codex CLI or Codex app.
-2. Restart Codex so it picks up the repo marketplace at `.agents/plugins/marketplace.json`, which points at `plugins/sonar`.
-3. Open the plugin directory:
-   - Codex app: open the Plugins panel
-   - Codex CLI: if your build exposes plugin UI commands, start `codex --enable plugins` and open plugins from the slash-command menu
-4. Choose the `FishStack Local` marketplace and install `Sonar`.
-5. Start a new thread and invoke the plugin:
-   - `@sonar`
-   - `@sonar sonar-codex-setup`
-   - `@sonar sonar-impact`
-   - `@sonar sonar-verify`
-   - `@sonar sonar-workspace`
-   - `@sonar sonar-upgrade`
-   - `@sonar sonar-install-agents`
+Unlike Claude Code, Codex has no `codex plugin install` CLI command. Plugin installation requires the Codex app UI and must be done by the user, not an agent. If you are a coding agent, skip to [Recommended Codex setup](#recommended-codex-setup) — that is your entry point once the user confirms the plugin is installed.
+
+**User steps:**
+
+1. Clone this repo: `git clone https://github.com/goldfish-1x/sonar`
+2. Open the cloned repo in the Codex app.
+3. Restart Codex so it picks up the repo marketplace at `.agents/plugins/marketplace.json`.
+4. Open the Plugins panel, choose the `FishStack Local` marketplace, and install `Sonar`.
+5. Start a new thread — the plugin skills will now be available as `@sonar`.
 
 Codex CLI plugin installation is still build-dependent. In `codex-cli 0.114.0`, `codex --enable plugins` enables the feature flag but `/plugins` is still not a recognized slash command, so use the Codex app plugin panel or a newer CLI build that exposes plugin installation.
 
 ### Recommended Codex setup
 
-After installing the plugin in a repository:
+Once the plugin is installed, a coding agent can handle the rest. After the user confirms the plugin is active in a new thread:
 
-1. Start a fresh Codex thread so the plugin skills are loaded.
-2. Run `@sonar sonar-codex-setup` for a guided setup pass.
+1. Run `@sonar sonar-codex-setup` for a guided setup pass.
 3. If `.sonar/` does not exist yet, run `@sonar sonar-crawl` to build the initial map.
 4. If `.sonar/` exists but is stale, run `@sonar sonar-update`.
 5. Run `@sonar sonar-upgrade` when you want to check whether the installed plugin is current.
