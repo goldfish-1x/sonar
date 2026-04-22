@@ -53,6 +53,14 @@ export function tokenizeQuery(value) {
     .match(/[a-z0-9]+/g)?.filter(token => token.length > 1 && !STOP_WORDS.has(token)) || [];
 }
 
+export function normalizeSearchComparable(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 export function buildFtsQuery(value) {
   const tokens = tokenizeQuery(value);
   if (tokens.length === 0) return "";

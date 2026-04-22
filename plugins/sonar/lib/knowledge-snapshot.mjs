@@ -8,6 +8,7 @@ import {
   loadJsonIfExists,
   normalizeEvidenceList,
   normalizeFlow,
+  normalizeSearchComparable,
   slugify,
   tokenizeQuery
 } from "../scripts/retrieval-utils.mjs";
@@ -142,10 +143,11 @@ function runSqliteJson(dbPath, sql, fallback = []) {
   try {
     const output = execFileSync("sqlite3", ["-json", dbPath, sql], {
       encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"]
+      stdio: ["ignore", "pipe", "pipe"]
     }).trim();
     return output ? JSON.parse(output) : fallback;
-  } catch {
+  } catch (err) {
+    if (err.stderr) console.error("[sonar] sqlite query error:", String(err.stderr).trim());
     return fallback;
   }
 }
@@ -865,18 +867,26 @@ function scoreDocument(doc, tokens, queryLower, intent) {
   const key = String(doc.key || "").toLowerCase();
   const summary = String(doc.summary || "").toLowerCase();
   const searchText = String(doc.search_text || "").toLowerCase();
+  const normalizedQuery = normalizeSearchComparable(queryLower);
+  const normalizedKey = normalizeSearchComparable(key);
+  const normalizedTitle = normalizeSearchComparable(title);
   let score = 0;
   const reasons = [];
 
   if (queryLower && key === queryLower) {
     score += 18;
     reasons.push("exact key");
+  } else if (normalizedQuery && normalizedKey === normalizedQuery) {
+    score += 18;
+    reasons.push("exact key");
   }
   if (queryLower && title === queryLower) {
     score += 16;
     reasons.push("exact title");
-  }
-  if (queryLower && title.includes(queryLower)) {
+  } else if (normalizedQuery && normalizedTitle === normalizedQuery) {
+    score += 16;
+    reasons.push("exact title");
+  } else if (queryLower && title.includes(queryLower)) {
     score += 8;
     reasons.push("title match");
   }
@@ -936,7 +946,9 @@ function scoreDocument(doc, tokens, queryLower, intent) {
   if (doc.freshness === "stale" || doc.freshness === "queued") {
     score += intent.impact ? 1.5 : 0.5;
   }
-  if (doc.type === "module") score += 0.3;
+  // Navigational types are more useful for agent orientation than evidence fragments.
+  if (["module", "parent-module"].includes(doc.type)) score += 3;
+  if (doc.type === "flow") score += 2;
 
   return { score, reasons: unique(reasons) };
 }
@@ -950,37 +962,9 @@ function detectSearchIntent(tokens) {
 }
 
 export function searchKnowledge(snapshot, query, options = {}) {
-  const limit = options.limit || 20;
-  const rawTokens = tokenizeQuery(query);
-  const tokens = rawTokens.filter(token =>
-    !IMPACT_INTENT_TOKENS.has(token)
-    && !RULE_INTENT_TOKENS.has(token)
-    && !EVIDENCE_INTENT_TOKENS.has(token)
-  );
-  const queryLower = String(query || "").trim().toLowerCase();
-  const intent = detectSearchIntent(rawTokens);
-  const scoringTokens = tokens.length > 0 ? tokens : rawTokens;
+  const { top, topModuleKeys } = rankSearchDocuments(snapshot.search.documents, query, options);
 
-  if (!queryLower) {
-    return [];
-  }
-
-  const scored = snapshot.search.documents
-    .map(doc => {
-      const { score, reasons } = scoreDocument(doc, scoringTokens, queryLower, intent);
-      return {
-        ...doc,
-        score: Number(score.toFixed(3)),
-        why: reasons
-      };
-    })
-    .filter(doc => doc.score > 0)
-    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title));
-
-  const top = scored.slice(0, limit);
-  const topModuleKeys = unique(top.flatMap(doc => doc.module_keys || []).slice(0, 12));
-
-  if (topModuleKeys.length === 0) return top;
+  if (top.length === 0 || topModuleKeys.length === 0) return top;
 
   const boosted = new Map(top.map(doc => [doc.id, doc]));
   for (const moduleKey of topModuleKeys) {
@@ -1026,7 +1010,43 @@ export function searchKnowledge(snapshot, query, options = {}) {
 
   return [...boosted.values()]
     .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
-    .slice(0, limit);
+    .slice(0, options.limit || 20);
+}
+
+export function rankSearchDocuments(documents, query, options = {}) {
+  const limit = options.limit || 20;
+  const rawTokens = tokenizeQuery(query);
+  const tokens = rawTokens.filter(token =>
+    !IMPACT_INTENT_TOKENS.has(token)
+    && !RULE_INTENT_TOKENS.has(token)
+    && !EVIDENCE_INTENT_TOKENS.has(token)
+  );
+  const queryLower = String(query || "").trim().toLowerCase();
+  const intent = detectSearchIntent(rawTokens);
+  const scoringTokens = tokens.length > 0 ? tokens : rawTokens;
+
+  if (!queryLower) {
+    return {
+      top: [],
+      topModuleKeys: []
+    };
+  }
+
+  const scored = documents
+    .map(doc => {
+      const { score, reasons } = scoreDocument(doc, scoringTokens, queryLower, intent);
+      return {
+        ...doc,
+        score: Number(score.toFixed(3)),
+        why: reasons
+      };
+    })
+    .filter(doc => doc.score > 0)
+    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title));
+
+  const top = scored.slice(0, limit);
+  const topModuleKeys = unique(top.flatMap(doc => doc.module_keys || []).slice(0, 12));
+  return { top, topModuleKeys };
 }
 
 export function findShortestPath(snapshot, sourceKey, targetKey) {

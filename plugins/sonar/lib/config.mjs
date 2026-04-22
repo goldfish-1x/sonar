@@ -51,7 +51,8 @@ export const DEFAULT_SONAR_CONFIG = {
   retrieval: {
     max_modules: 3,
     max_flows: 2,
-    max_facts: 3
+    max_facts: 3,
+    search_backend: "snapshot"
   }
 };
 

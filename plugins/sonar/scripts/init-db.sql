@@ -110,6 +110,28 @@ CREATE TABLE IF NOT EXISTS artifact_freshness (
   PRIMARY KEY (artifact_type, artifact_key)
 );
 
+CREATE TABLE IF NOT EXISTS search_docs (
+  id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  summary TEXT,
+  freshness TEXT,
+  url TEXT,
+  module_keys_json TEXT NOT NULL DEFAULT '[]',
+  load_bearing INTEGER DEFAULT 0,
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  entity_id TEXT,
+  entity_title TEXT,
+  claim_type TEXT,
+  artifact_path TEXT,
+  evidence_kind TEXT,
+  related_flow_keys_json TEXT NOT NULL DEFAULT '[]',
+  system_fact_ids_json TEXT NOT NULL DEFAULT '[]',
+  domain_ids_json TEXT NOT NULL DEFAULT '[]',
+  search_text TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS submodules_fts USING fts5(
   key,
   cluster_name,
@@ -147,6 +169,13 @@ CREATE VIRTUAL TABLE IF NOT EXISTS system_facts_fts USING fts5(
   scope,
   module_keys
 );
+CREATE VIRTUAL TABLE IF NOT EXISTS search_docs_fts USING fts5(
+  id UNINDEXED,
+  key,
+  title,
+  summary,
+  search_text
+);
 
 -- Performance indexes
 CREATE INDEX IF NOT EXISTS idx_symbols_module ON symbols(module_key);
@@ -163,3 +192,5 @@ CREATE INDEX IF NOT EXISTS idx_artifact_freshness_status ON artifact_freshness(s
 CREATE INDEX IF NOT EXISTS idx_file_edges_source ON file_edges(source_file);
 CREATE INDEX IF NOT EXISTS idx_file_edges_target ON file_edges(target_file);
 CREATE INDEX IF NOT EXISTS idx_submodules_parent ON submodules(parent_module_key);
+CREATE INDEX IF NOT EXISTS idx_search_docs_type ON search_docs(type);
+CREATE INDEX IF NOT EXISTS idx_search_docs_key ON search_docs(key);

@@ -1,6 +1,6 @@
 {
   "name": "@fishstack/sonar",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,8 +10,10 @@
     "test:knowledge": "bun test test/knowledge-snapshot.test.mjs",
     "test:workspace": "bun test test/workspace-integration.test.mjs",
     "test": "bun run test:knowledge && bun run test:workspace",
-    "eval:extractor": "bun ./scripts/eval-extractor.mjs",
-    "eval:retrieval": "bun ./scripts/eval-retrieval.mjs"
+    "check:codex-update": "node ./scripts/check-codex-update.mjs",
+    "install:codex-agents": "node ./scripts/install-codex-agents.mjs",
+    "sync:codex-plugin": "echo \"Published Sonar bundles are generated during release; pull the latest repo to update.\"",
+    "verify:codex-plugin": "node ./scripts/verify-codex-plugin-package.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

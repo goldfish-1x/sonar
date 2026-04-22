@@ -9,8 +9,8 @@
     {
       "name": "sonar",
       "description": "Codebase cartographer — builds a multi-layered understanding graph for agent situational awareness.",
-      "source": "./sonar",
-      "version": "0.5.8"
+      "source": "./plugins/sonar",
+      "version": "0.5.9"
     }
   ]
 }

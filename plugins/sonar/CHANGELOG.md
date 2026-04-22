@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.9 — 2026-04-20
+
+- `build-db`: symbols now populate from skeleton static exports as a baseline — cards with purpose text still win via `seenSymbols` dedup, but skeleton fills the rest for free (no LLM cost). Previously symbols only came from `card.function_cards` / `card.public_api`, which are often empty on parent/submodule cards.
+
 ## 0.5.8 — 2026-04-10
 
 - Fixed hooks not firing on Linux — new `run.sh` wrapper auto-detects node from nvm, fnm, volta, asdf, and common system paths

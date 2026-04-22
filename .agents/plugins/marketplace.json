@@ -1,0 +1,20 @@
+{
+  "name": "sonar-local",
+  "interface": {
+    "displayName": "FishStack Local"
+  },
+  "plugins": [
+    {
+      "name": "sonar",
+      "source": {
+        "source": "local",
+        "path": "./plugins/sonar"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

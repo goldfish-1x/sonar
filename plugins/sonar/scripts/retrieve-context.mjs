@@ -3,7 +3,8 @@
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { join } from "path";
 import { performance } from "perf_hooks";
-import { loadKnowledgeSnapshot, searchKnowledge } from "../lib/knowledge-snapshot.mjs";
+import { loadKnowledgeSnapshot } from "../lib/knowledge-snapshot.mjs";
+import { searchSonarKnowledge } from "../lib/search-index.mjs";
 import { getModuleState, loadSonarState, moduleFreshnessStatus } from "../lib/state.mjs";
 import {
   loadJsonIfExists,
@@ -17,6 +18,176 @@ function sortByScore(rows) {
 
 function includeImpactTerms(keywords) {
   return keywords.some(keyword => ["impact", "change", "changes", "break", "breaks", "update", "updates"].includes(keyword));
+}
+
+function buildSnapshotRetrieve(snapshot, query, searchResults, startedAt) {
+  const modules = searchResults
+    .filter(entry => ["module", "parent-module"].includes(entry.type))
+    .slice(0, 5)
+    .map(entry => {
+      const module = snapshot.modules.byKey[entry.key];
+      if (!module) return null;
+      return {
+        key: module.key,
+        title: module.name,
+        purpose: module.purpose || module.description || "",
+        freshness: module.freshness.status,
+        load_bearing: module.load_bearing,
+        dependencies: module.dependencies.map(item => item.target),
+        dependents: module.dependents.map(item => item.source),
+        related_flows: module.related_flows.map(flow => flow.name),
+        system_fact_ids: module.system_facts.map(fact => fact.id),
+        search_text: entry.search_text,
+        score: entry.score
+      };
+    })
+    .filter(Boolean);
+  const flows = searchResults
+    .filter(entry => entry.type === "flow")
+    .slice(0, 5)
+    .map(entry => {
+      const flow = snapshot.flows.byName[entry.key];
+      if (!flow) return null;
+      return {
+        name: flow.name,
+        title: flow.title,
+        confidence: flow.confidence,
+        freshness: flow.freshness.status,
+        modules: flow.module_keys,
+        search_text: entry.search_text,
+        score: entry.score
+      };
+    })
+    .filter(Boolean);
+  const systemFacts = searchResults
+    .filter(entry => ["system-fact", "domain", "layer"].includes(entry.type))
+    .slice(0, 5)
+    .map(entry => ({
+      id: entry.key,
+      kind: entry.type,
+      title: entry.title,
+      detail: entry.summary,
+      scope: "system",
+      module_keys: entry.module_keys,
+      confidence: entry.type === "layer" ? 0.8 : 0.85,
+      search_text: entry.search_text,
+      score: entry.score
+    }));
+  const briefs = modules
+    .slice(0, 3)
+    .map(entry => snapshot.modules.byKey[entry.key])
+    .filter(Boolean)
+    .map(module => ({
+      module: {
+        key: module.key,
+        name: module.name,
+        path: module.path,
+        purpose: module.purpose || module.description || ""
+      },
+      freshness: {
+        artifact_type: "module",
+        artifact_key: module.key,
+        status: module.freshness.status,
+        reason: module.freshness.reason || "No freshness reasons recorded."
+      },
+      public_api: module.public_api || [],
+      top_symbols: (module.function_cards || []).slice(0, 8).map(fn => ({
+        name: fn.name || fn.function || "",
+        kind: "function",
+        file: fn.file || null,
+        line: fn.line ?? null
+      })),
+      dependencies: module.dependencies.map(item => item.target),
+      dependents: module.dependents.map(item => item.source),
+      business_rules: (module.business_rules || []).slice(0, 3),
+      conventions: (module.conventions || []).slice(0, 3),
+      related_flows: module.related_flows.slice(0, 5),
+      system_facts: module.system_facts.slice(0, 8)
+    }));
+
+  return {
+    mode: "snapshot",
+    query,
+    duration_ms: Number((performance.now() - startedAt).toFixed(3)),
+    modules,
+    flows,
+    system_facts: systemFacts,
+    briefs
+  };
+}
+
+function buildIndexedRetrieve(sonarDir, query, searchResults, startedAt) {
+  const briefDir = join(sonarDir, "partials", "agent-briefs");
+  const index = loadJsonIfExists(join(briefDir, "index.json"), { modules: [], flows: [], system_facts: [] });
+  const moduleIndex = new Map((index.modules || []).map(entry => [entry.key, entry]));
+  const flowIndex = new Map((index.flows || []).map(entry => [entry.name, entry]));
+  const systemFactIndex = new Map((index.system_facts || []).map(entry => [entry.id, entry]));
+
+  const modules = searchResults
+    .filter(entry => ["module", "parent-module"].includes(entry.type))
+    .slice(0, 5)
+    .map(entry => {
+      const module = moduleIndex.get(entry.key);
+      return {
+        key: entry.key,
+        title: entry.title,
+        purpose: module?.purpose || entry.summary || "",
+        freshness: module?.freshness || entry.freshness || "unknown",
+        load_bearing: module?.load_bearing ?? entry.load_bearing,
+        dependencies: module?.dependencies || [],
+        dependents: module?.dependents || [],
+        related_flows: module?.related_flows || [],
+        system_fact_ids: module?.system_fact_ids || [],
+        search_text: entry.search_text,
+        score: entry.score
+      };
+    });
+  const flows = searchResults
+    .filter(entry => entry.type === "flow")
+    .slice(0, 5)
+    .map(entry => {
+      const flow = flowIndex.get(entry.key);
+      return {
+        name: entry.key,
+        title: entry.title,
+        confidence: flow?.confidence ?? null,
+        freshness: flow?.freshness || entry.freshness || "unknown",
+        modules: flow?.modules || entry.module_keys || [],
+        search_text: entry.search_text,
+        score: entry.score
+      };
+    });
+  const systemFacts = searchResults
+    .filter(entry => ["system-fact", "domain", "layer"].includes(entry.type))
+    .slice(0, 5)
+    .map(entry => {
+      const fact = systemFactIndex.get(entry.key);
+      return {
+        id: entry.key,
+        kind: fact?.kind || entry.type,
+        title: entry.title,
+        detail: fact?.detail || entry.summary || "",
+        scope: fact?.scope || "system",
+        module_keys: fact?.module_keys || entry.module_keys || [],
+        confidence: fact?.confidence ?? (entry.type === "layer" ? 0.8 : 0.85),
+        search_text: entry.search_text,
+        score: entry.score
+      };
+    });
+  const briefs = modules
+    .slice(0, 3)
+    .map(moduleEntry => loadJsonIfExists(join(briefDir, `${moduleEntry.key}.json`), null))
+    .filter(Boolean);
+
+  return {
+    mode: "sqlite",
+    query,
+    duration_ms: Number((performance.now() - startedAt).toFixed(3)),
+    modules,
+    flows,
+    system_facts: systemFacts,
+    briefs
+  };
 }
 
 export function legacyRetrieve(sonarDir, query) {
@@ -70,98 +241,17 @@ export function legacyRetrieve(sonarDir, query) {
 
 export function enhancedRetrieve(sonarDir, query) {
   const startedAt = performance.now();
+  const indexedSearch = searchSonarKnowledge(sonarDir, query, { limit: 15, fallbackToSnapshot: false });
+  if (indexedSearch.backend === "sqlite") {
+    return buildIndexedRetrieve(sonarDir, query, indexedSearch.results, startedAt);
+  }
+
   const snapshot = loadKnowledgeSnapshot(sonarDir);
   if (snapshot) {
-    const searchResults = searchKnowledge(snapshot, query, { limit: 15 });
-    const modules = searchResults
-      .filter(entry => ["module", "parent-module"].includes(entry.type))
-      .slice(0, 5)
-      .map(entry => {
-        const module = snapshot.modules.byKey[entry.key];
-        return {
-          key: module.key,
-          title: module.name,
-          purpose: module.purpose || module.description || "",
-          freshness: module.freshness.status,
-          load_bearing: module.load_bearing,
-          dependencies: module.dependencies.map(item => item.target),
-          dependents: module.dependents.map(item => item.source),
-          related_flows: module.related_flows.map(flow => flow.name),
-          system_fact_ids: module.system_facts.map(fact => fact.id),
-          search_text: entry.search_text,
-          score: entry.score
-        };
-      });
-    const flows = searchResults
-      .filter(entry => entry.type === "flow")
-      .slice(0, 5)
-      .map(entry => {
-        const flow = snapshot.flows.byName[entry.key];
-        return {
-          name: flow.name,
-          title: flow.title,
-          confidence: flow.confidence,
-          freshness: flow.freshness.status,
-          modules: flow.module_keys,
-          search_text: entry.search_text,
-          score: entry.score
-        };
-      });
-    const systemFacts = searchResults
-      .filter(entry => ["system-fact", "domain", "layer"].includes(entry.type))
-      .slice(0, 5)
-      .map(entry => ({
-        id: entry.key,
-        kind: entry.type,
-        title: entry.title,
-        detail: entry.summary,
-        scope: "system",
-        module_keys: entry.module_keys,
-        confidence: entry.type === "layer" ? 0.8 : 0.85,
-        search_text: entry.search_text,
-        score: entry.score
-      }));
-    const briefs = modules
-      .slice(0, 3)
-      .map(entry => snapshot.modules.byKey[entry.key])
-      .filter(Boolean)
-      .map(module => ({
-        module: {
-          key: module.key,
-          name: module.name,
-          path: module.path,
-          purpose: module.purpose || module.description || ""
-        },
-        freshness: {
-          artifact_type: "module",
-          artifact_key: module.key,
-          status: module.freshness.status,
-          reason: module.freshness.reason || "No freshness reasons recorded."
-        },
-        public_api: module.public_api || [],
-        top_symbols: (module.function_cards || []).slice(0, 8).map(fn => ({
-          name: fn.name || fn.function || "",
-          kind: "function",
-          file: fn.file || null,
-          line: fn.line ?? null
-        })),
-        dependencies: module.dependencies.map(item => item.target),
-        dependents: module.dependents.map(item => item.source),
-        business_rules: (module.business_rules || []).slice(0, 3),
-        conventions: (module.conventions || []).slice(0, 3),
-        related_flows: module.related_flows.slice(0, 5),
-        system_facts: module.system_facts.slice(0, 8)
-      }));
-
-    return {
-      mode: "snapshot",
-      query,
-      duration_ms: Number((performance.now() - startedAt).toFixed(3)),
-      modules,
-      flows,
-      system_facts: systemFacts,
-      briefs
-    };
+    const snapshotSearch = searchSonarKnowledge(sonarDir, query, { limit: 15, backend: "snapshot", snapshot });
+    if (snapshotSearch?.results?.length) {
+      return buildSnapshotRetrieve(snapshot, query, snapshotSearch.results, startedAt);
+    }
   }
 
   const keywords = tokenizeQuery(query);

@@ -16,9 +16,9 @@ import {
   buildGraphView,
   buildKnowledgeSnapshot,
   loadKnowledgeSnapshot,
-  searchKnowledge,
   writeKnowledgeSnapshot
 } from "../lib/knowledge-snapshot.mjs";
+import { searchSonarKnowledge } from "../lib/search-index.mjs";
 
 const SONAR_DIR = resolve(process.argv[2] || ".sonar");
 const PORT = Number.parseInt(process.argv[3] || "3456", 10);
@@ -1259,7 +1259,7 @@ function renderHomePage() {
 
 function renderSearchPage(query) {
   const trimmed = String(query || "").trim();
-  const results = trimmed ? searchKnowledge(snapshot, trimmed, { limit: 30 }) : [];
+  const results = trimmed ? searchSonarKnowledge(SONAR_DIR, trimmed, { limit: 30, snapshot }).results : [];
 
   const content = trimmed ? `
     ${renderPageHero({
@@ -2613,7 +2613,7 @@ const server = createServer((req, res) => {
 
   if (pathname === "/api/search") {
     const query = urlObj.searchParams.get("q") || "";
-    const results = query ? searchKnowledge(snapshot, query, { limit: 30 }) : [];
+    const results = query ? searchSonarKnowledge(SONAR_DIR, query, { limit: 30, snapshot }).results : [];
     res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ query, results }));
     return;

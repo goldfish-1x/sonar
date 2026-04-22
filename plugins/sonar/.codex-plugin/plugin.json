@@ -1,0 +1,33 @@
+{
+  "name": "sonar",
+  "version": "0.5.9",
+  "description": "Codebase cartographer — builds a multi-layered understanding graph for agent situational awareness.",
+  "author": {
+    "name": "Sammy",
+    "url": "https://github.com/goldfish-1x"
+  },
+  "homepage": "https://github.com/goldfish-1x/sonar",
+  "repository": "https://github.com/goldfish-1x/sonar",
+  "keywords": [
+    "codebase",
+    "architecture",
+    "dependencies",
+    "knowledge-graph",
+    "verification"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Sonar",
+    "shortDescription": "Task briefings, impact analysis, and verification from .sonar artifacts.",
+    "longDescription": "Use Sonar to orient before coding, inspect impact, verify conventions, and browse a local code knowledge workspace built from .sonar artifacts.",
+    "developerName": "Sammy",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/goldfish-1x/sonar",
+    "defaultPrompt": "Set up Sonar for this repo in Codex.",
+    "brandColor": "#0F766E"
+  }
+}

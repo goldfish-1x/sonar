@@ -16,6 +16,7 @@ import { fileURLToPath } from "url";
 import Database from "better-sqlite3";
 import { buildStateForSonarDir } from "./build-state.mjs";
 import { freshnessRowsFromState, loadSonarState } from "../lib/state.mjs";
+import { buildKnowledgeSnapshot, writeKnowledgeSnapshot } from "../lib/knowledge-snapshot.mjs";
 import { buildAgentBriefArtifacts } from "./agent-briefs.mjs";
 import { snapshotMemoryMb, toFixedNumber, writePerfSection } from "./perf-utils.mjs";
 import {
@@ -46,7 +47,7 @@ const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.exec(readFileSync(schemaPath, "utf8"));
 
-const stats = { files: 0, modules: 0, submodules: 0, symbols: 0, edges: 0, file_edges: 0, flows: 0, flow_steps: 0, system_facts: 0 };
+const stats = { files: 0, modules: 0, submodules: 0, symbols: 0, edges: 0, file_edges: 0, flows: 0, flow_steps: 0, system_facts: 0, search_docs: 0 };
 
 const fileIdByPath = new Map();
 const seenSymbols = new Set();
@@ -378,6 +379,27 @@ for (const [moduleKey, moduleInfo] of Object.entries(skeleton.modules || {})) {
     analyzed_at: null
   });
 }
+
+// Skeleton-export fallback: card-provided symbols (with purpose) win via
+// seenSymbols deduplication above; the skeleton fills the rest for free.
+const insertSkeletonSymbols = db.transaction(() => {
+  for (const [filePath, info] of Object.entries(skeleton.files || {})) {
+    const moduleKey = info.module_key;
+    if (!moduleKey) continue;
+    for (const exp of info.exports || []) {
+      if (!exp.name) continue;
+      registerSymbol(moduleKey, {
+        name: exp.name,
+        kind: exp.kind || "function",
+        file: filePath,
+        line: exp.line ?? null,
+        purpose: "",
+      }, exp.kind || "function");
+    }
+  }
+});
+insertSkeletonSymbols();
+
 phaseDurations.load_modules_ms = toFixedNumber(performance.now() - modulesStartedAt);
 
 const flowsDir = join(sonarDir, "flows");
@@ -578,6 +600,91 @@ phaseDurations.write_lookup_files_ms = toFixedNumber(performance.now() - writeLo
 
 db.close();
 
+const searchDocsStartedAt = performance.now();
+const snapshot = buildKnowledgeSnapshot(sonarDir);
+writeKnowledgeSnapshot(sonarDir, snapshot);
+const domainIdsByModule = new Map();
+for (const domain of snapshot.system?.collections?.domains || []) {
+  for (const moduleKey of domain.module_keys || []) {
+    if (!domainIdsByModule.has(moduleKey)) domainIdsByModule.set(moduleKey, []);
+    domainIdsByModule.get(moduleKey).push(domain.id);
+  }
+}
+
+const searchDb = new Database(dbPath);
+searchDb.pragma("journal_mode = WAL");
+const insertSearchDoc = searchDb.prepare(`
+  INSERT OR REPLACE INTO search_docs (
+    id,
+    type,
+    key,
+    title,
+    summary,
+    freshness,
+    url,
+    module_keys_json,
+    load_bearing,
+    tags_json,
+    entity_id,
+    entity_title,
+    claim_type,
+    artifact_path,
+    evidence_kind,
+    related_flow_keys_json,
+    system_fact_ids_json,
+    domain_ids_json,
+    search_text
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+const insertSearchDocFts = searchDb.prepare("INSERT INTO search_docs_fts (id, key, title, summary, search_text) VALUES (?, ?, ?, ?, ?)");
+
+const insertSearchDocs = searchDb.transaction(() => {
+  searchDb.exec("DELETE FROM search_docs");
+  searchDb.exec("DELETE FROM search_docs_fts");
+
+  for (const doc of snapshot.search.documents || []) {
+    const module = ["module", "parent-module"].includes(doc.type)
+      ? snapshot.modules.byKey[doc.key] || null
+      : null;
+    const relatedFlowKeys = module ? (module.related_flows || []).map(flow => flow.name).filter(Boolean) : [];
+    const systemFactIds = module ? (module.system_facts || []).map(fact => fact.id).filter(Boolean) : [];
+    const domainIds = module ? (domainIdsByModule.get(module.key) || []) : [];
+
+    insertSearchDoc.run(
+      doc.id,
+      doc.type,
+      doc.key || "",
+      doc.title || doc.key || doc.id,
+      doc.summary || "",
+      doc.freshness || "unknown",
+      doc.url || "",
+      JSON.stringify(doc.module_keys || []),
+      doc.load_bearing ? 1 : 0,
+      JSON.stringify(doc.tags || []),
+      doc.entity_id || null,
+      doc.entity_title || null,
+      doc.claim_type || null,
+      doc.artifact_path || null,
+      doc.evidence_kind || null,
+      JSON.stringify(relatedFlowKeys),
+      JSON.stringify(systemFactIds),
+      JSON.stringify(domainIds),
+      doc.search_text || ""
+    );
+    insertSearchDocFts.run(
+      doc.id,
+      doc.key || "",
+      doc.title || doc.key || doc.id,
+      doc.summary || "",
+      doc.search_text || ""
+    );
+    stats.search_docs++;
+  }
+});
+insertSearchDocs();
+searchDb.close();
+phaseDurations.build_search_docs_ms = toFixedNumber(performance.now() - searchDocsStartedAt);
+
 writePerfSection(sonarDir, "db", {
   total_duration_ms: toFixedNumber(performance.now() - overallStartedAt),
   phases: phaseDurations,
@@ -588,10 +695,11 @@ writePerfSection(sonarDir, "db", {
   flows: stats.flows,
   flow_steps: stats.flow_steps,
   system_facts: stats.system_facts,
+  search_docs: stats.search_docs,
   reverse_import_matches: reverseImportMatches,
   rss_mb: snapshotMemoryMb()
 });
 
 const symbolImportCount = Object.values(symbolImports).reduce((sum, symbols) => sum + Object.keys(symbols).length, 0);
-console.log(`Graph DB built: ${stats.files} files, ${stats.modules} modules, ${stats.submodules} submodules, ${stats.symbols} symbols, ${stats.edges} edges, ${stats.file_edges} file edges, ${stats.flows} flows, ${stats.flow_steps} flow steps`);
+console.log(`Graph DB built: ${stats.files} files, ${stats.modules} modules, ${stats.submodules} submodules, ${stats.symbols} symbols, ${stats.edges} edges, ${stats.file_edges} file edges, ${stats.flows} flows, ${stats.flow_steps} flow steps, ${stats.search_docs} search docs`);
 console.log(`Lookup files written: summaries.json (${Object.keys(summaries).length} modules), file-modules.json (${Object.keys(fileModules).length} files), symbol-imports.json (${symbolImportCount} symbols)`);
