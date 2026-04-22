@@ -4,67 +4,32 @@ Sonar is a codebase cartographer plugin for Claude Code and Codex. It builds a p
 
 ---
 
-## Install via Claude Code
-
-Claude Code can install Sonar directly from the public GitHub marketplace repo:
-
-```text
-/plugin marketplace add goldfish-1x/sonar
-/plugin install sonar@sonar
-/reload-plugins
-```
-
-If `/plugin` is not recognized, update Claude Code and restart it before retrying.
-
-Claude Code activates the Claude plugin surface from `plugins/sonar`:
-
-- `.claude-plugin/plugin.json`
-- `commands/`
-- `agents/`
-- `hooks/`
-- `skills/`
-
-It does not activate the Codex plugin manifest or Codex custom-agent templates.
-
----
-
-## Requirements
-
-Check these before installing. Sonar will fail silently if Node is missing.
-
-```bash
-node --version    # must be 18 or higher
-git --version     # any recent version
-```
-
-**If Node is missing or below v18:**
-
-macOS:
-```bash
-brew install node
-```
-
-Linux (no sudo):
-```bash
-curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz \
-  | tar -xJ -C ~/.local --strip-components=1
-export PATH="$HOME/.local/bin:$PATH"
-node --version   # verify before continuing
-```
-
-Linux (with sudo):
-```bash
-curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
-sudo apt-get install -y nodejs
-```
-
-> **Node on PATH:** Sonar hooks run in a non-interactive shell that does not source `.bashrc` or `.profile`. If Node was installed via a version manager (nvm, fnm, volta, asdf), it may not be on the PATH the hook sees. Sonar's hook runner auto-detects common install locations for nvm, fnm, volta, asdf, and `~/.local/bin`. If hooks still fail, use a system-wide Node install (Homebrew, apt) which puts Node on a PATH visible to all processes.
-
----
-
 ## Installing Sonar
 
+**If you are a coding agent** (Claude or similar) and the user has asked you to install Sonar: run Steps 1–3 autonomously using your Bash tool. The only step that requires the user is Step 4 (plugin reload — the shell cannot trigger a UI event).
+
+### Step 0 — Check Node is available
+
+Sonar will fail silently if Node is missing. Run:
+
+```bash
+node --version
+```
+
+Must be v18 or higher. If missing:
+
+macOS: `brew install node`
+
+Linux:
+```bash
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs
+```
+
+> **Node on PATH:** Sonar hooks run in a non-interactive shell. If Node was installed via nvm, fnm, volta, or asdf it may not be visible to hooks. Sonar auto-detects common install locations, but if hooks fail use a system-wide Node install (Homebrew, apt).
+
 ### Step 1 — Add the marketplace and install
+
+Run via Bash:
 
 ```bash
 claude plugin marketplace add goldfish-1x/sonar
@@ -79,21 +44,25 @@ claude plugin install sonar
 
 ### Step 2 — Verify the install succeeded
 
+Run via Bash:
+
 ```bash
 claude plugin list
 ```
 
 `sonar` must appear in the output. If it doesn't, re-run Step 1.
 
-### Step 3 — Reload plugins
+### Step 3 — Ask the user to reload (the one manual step)
 
 Tell the user:
 
-> Sonar is installed. Please run `/reload-plugins` or restart Claude Code to activate it. Tell me when you're done and I'll run a health check.
+> Sonar is installed. Please run `/reload-plugins` or restart Claude Code to activate it. Let me know when you're done and I'll run a health check.
 
 Wait for confirmation before continuing.
 
 ### Step 4 — Health check (after reload)
+
+Run these slash commands:
 
 ```
 /sonar:sonar-version
@@ -105,9 +74,9 @@ Expected: version number, install path, and update status. Any error here means 
 /sonar:sonar-status
 ```
 
-Expected: map state for the current project. "No map" is fine on first use — it means Sonar is running but hasn't crawled yet. Hook errors or "node not found" mean the PATH issue from Step 1 wasn't resolved.
+Expected: map state for the current project. "No map" is fine on first use. Hook errors or "node not found" mean the PATH issue from Step 0 wasn't resolved.
 
-If both commands return output without errors, Sonar is healthy and ready.
+If both return without errors, Sonar is installed and healthy.
 
 ---
 

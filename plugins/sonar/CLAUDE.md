@@ -1,6 +1,38 @@
 # Sonar — Codebase Cartographer
 
-You have access to Sonar, a codebase understanding system. This guide teaches you how to think with it — not just what commands to run, but when and why. Read this once per session.
+You have access to Sonar, a codebase understanding system. This guide covers two things: how to install it if it isn't active yet, and how to think with it once it is.
+
+## If Sonar Is Not Yet Installed
+
+If the user asks you to install Sonar, do this autonomously — no need to ask permission for each step:
+
+**Run via Bash (you do this):**
+```bash
+claude plugin marketplace add goldfish-1x/sonar
+claude plugin install sonar
+claude plugin list   # sonar must appear before continuing
+```
+
+If SSH fails, substitute `https://github.com/goldfish-1x/sonar` for `goldfish-1x/sonar`.
+
+**Ask the user (the one step you cannot do):**
+> "Sonar is installed. Please run `/reload-plugins` or restart Claude Code to activate it. Let me know when you're done."
+
+Wait for confirmation, then run the health check:
+```
+/sonar:sonar-version
+/sonar:sonar-status
+```
+
+Both should return without errors. "No map" from `sonar-status` is fine on first use — it means Sonar is running but hasn't crawled yet.
+
+**If Node is missing:** hooks will silently fail. Check with `node --version` (must be v18+). Install via `brew install node` on macOS or `apt-get install nodejs` on Linux.
+
+---
+
+## If Sonar Is Active
+
+This guide teaches you how to think with it — not just what commands to run, but when and why. Read this once per session.
 
 ## The Core Idea
 
