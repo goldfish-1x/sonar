@@ -1,160 +1,6 @@
 # Sonar — Codebase Cartographer
 
-Sonar is a codebase cartographer plugin bundle for Claude Code and Codex. It builds a persistent understanding graph of any codebase and uses that map to surface relevant modules, conventions, flows, blast radius, and verification steps before agents make changes.
-
-Today the two agent surfaces differ:
-
-- Claude Code: slash commands plus automatic hooks
-- Codex CLI/App: plugin bundle plus bundled skills; custom-agent templates are installable into `.codex/agents/`; hooks are manual and only partially portable today
-
-Hook portability details live in [CODEX_PORTABILITY.md](./CODEX_PORTABILITY.md).
-
----
-
-## Install via Codex CLI or Codex App
-
-Sonar now ships a Codex plugin manifest, a generated `plugins/sonar` Codex bundle, and a repo-local marketplace entry.
-
-### Local install from this repo
-
-1. Open this repository in Codex CLI or Codex app.
-2. Restart Codex so it picks up the repo marketplace at `.agents/plugins/marketplace.json`, which points at `plugins/sonar`.
-3. Open the plugin directory:
-   - Codex app: open the Plugins panel
-   - Codex CLI: if your build exposes plugin UI commands, start `codex --enable plugins` and open plugins from the slash-command menu
-4. Choose the `FishStack Local` marketplace and install `Sonar`.
-5. Start a new thread and invoke the plugin:
-   - `@sonar`
-   - `@sonar sonar-codex-setup`
-   - `@sonar sonar-impact`
-   - `@sonar sonar-verify`
-   - `@sonar sonar-workspace`
-   - `@sonar sonar-upgrade`
-   - `@sonar sonar-install-agents`
-
-Codex CLI plugin installation is still build-dependent. In `codex-cli 0.114.0`, `codex --enable plugins` enables the feature flag but `/plugins` is still not a recognized slash command, so use the Codex app plugin panel or a newer CLI build that exposes plugin installation.
-
-### Recommended Codex setup
-
-After installing the plugin in a repository:
-
-1. Start a fresh Codex thread so the plugin skills are loaded.
-2. Run `@sonar sonar-codex-setup` for a guided setup pass.
-3. If `.sonar/` does not exist yet, run `@sonar sonar-crawl` to build the initial map.
-4. If `.sonar/` exists but is stale, run `@sonar sonar-update`.
-5. Run `@sonar sonar-upgrade` when you want to check whether the installed plugin is current.
-6. Optionally run `@sonar sonar-install-agents` to install Sonar custom-agent templates into `.codex/agents/`.
-7. Add the AGENTS.md snippet below so future Codex sessions know when to use Sonar.
-
-### How Sonar maps to Codex
-
-Codex plugins do not currently ship custom slash commands, so Sonar's Claude commands become Codex skills:
-
-| Claude Code | Codex |
-|-------------|-------|
-| `/sonar` | `@sonar` or `@sonar sonar` |
-| `/sonar explore` | `@sonar sonar-explore` |
-| `/sonar impact` | `@sonar sonar-impact` |
-| `/sonar verify` | `@sonar sonar-verify` |
-| `/sonar review-context` | `@sonar sonar-review-context` |
-| `/sonar status` | `@sonar sonar-status` |
-| `/sonar update` | `@sonar sonar-update` |
-| `/sonar crawl` | `@sonar sonar-crawl` |
-| `/sonar wiki` or `/sonar graph` | `@sonar sonar-workspace` |
-| Codex setup guidance | `@sonar sonar-codex-setup` |
-| Plugin update check | `@sonar sonar-upgrade` |
-| Sonar agent templates | `@sonar sonar-install-agents` |
-
-### Recommended AGENTS.md section
-
-Add this to the repository root `AGENTS.md`, or to a nested `AGENTS.md` if Sonar should apply only to part of a repo:
-
-```markdown
-## Sonar Usage
-
-- If `.sonar/meta.json` exists, use Sonar before substantial code changes, architectural decisions, or broad reviews.
-- For feature work or risky refactors, start with `@sonar sonar-impact "<task>"` to identify affected modules, flows, conventions, blast radius, and verification commands.
-- For general orientation, use `@sonar` or `@sonar sonar` before manually reading large parts of the codebase.
-- If `.sonar/` is missing, ask before running `@sonar sonar-crawl`; if the map is stale, use `@sonar sonar-update`.
-- Before finalizing a change, use `@sonar sonar-verify` to compare the implementation against mapped conventions and recommended checks.
-- For review prep, use `@sonar sonar-review-context` to gather relevant modules, flows, and invariants.
-- Use `@sonar sonar-upgrade` to check whether the installed Sonar Codex plugin is behind the public GitHub version.
-- If Sonar Codex custom agents are installed, use `sonar_mapper` for read-only mapping, `sonar_reviewer` for review, and `sonar_worker` for scoped implementation when explicit delegation is useful.
-- Treat Sonar output as guidance, not ground truth. If map freshness is questionable, verify claims against source files.
-```
-
-### Check for Sonar updates
-
-Use:
-
-```text
-@sonar sonar-upgrade
-```
-
-This compares the installed Codex plugin manifest with the public GitHub manifest at `goldfish-1x/sonar`.
-
-If an update is available and Sonar is installed from a git checkout:
-
-```bash
-git pull --ff-only
-```
-
-Then restart Codex, open a new thread, and verify:
-
-```text
-@sonar sonar-version
-```
-
-If Sonar is not installed from a git checkout, fetch the latest `https://github.com/goldfish-1x/sonar` repo, reopen it in Codex, and reinstall `Sonar` from the `FishStack Local` marketplace.
-
-### Install Sonar Codex custom agents
-
-Codex plugins can carry agent templates, but Codex only loads custom agents from `.codex/agents/` or `~/.codex/agents/`. To install Sonar's project-scoped Codex agents, invoke:
-
-```text
-@sonar sonar-install-agents
-```
-
-The installer copies these templates into `.codex/agents/`:
-
-- `sonar_mapper` on `gpt-5.4-mini` for read-only mapping
-- `sonar_reviewer` on `gpt-5.4` with high reasoning for reviews
-- `sonar_worker` on `gpt-5.4` for implementation work
-
-Existing project agent files are not overwritten unless the user explicitly asks for `--force`. Restart Codex after installing agents so the new custom agents are loaded.
-
-### Codex hook status
-
-Codex hook support is not equivalent to Claude's:
-
-- `SessionStart` and `UserPromptSubmit` are manually configurable in Codex
-- `Stop` is possible, but Sonar needs a Codex-specific wrapper
-- `PreToolUse` and `PostToolUse` currently only intercept `Bash`, so Sonar's edit-aware warnings and post-edit checks do not port directly
-
-For the current status and recommended rollout shape, see [CODEX_PORTABILITY.md](./CODEX_PORTABILITY.md).
-
-### Verify the Codex plugin package
-
-Before publishing or reviewing Codex packaging changes, run:
-
-```bash
-node scripts/sync-sonar-codex-plugin.mjs
-node scripts/verify-sonar-codex-plugin.mjs
-```
-
-From the `sonar/` package directory, the same verifier is available as:
-
-```bash
-npm run sync:codex-plugin
-npm run verify:codex-plugin
-```
-
-In the published standalone Sonar repo, the plugin package lives under `plugins/sonar`; use:
-
-```bash
-cd plugins/sonar
-npm run verify:codex-plugin
-```
+Sonar is a codebase cartographer plugin for Claude Code and Codex. It builds a persistent understanding graph of any codebase and uses that map to surface relevant modules, conventions, flows, blast radius, and verification steps before agents make changes.
 
 ---
 
@@ -421,3 +267,134 @@ Tested on **macOS with Claude Code CLI**. Other platforms are expected to work b
 | Windows (WSL) | 🔲 Untested | Expected to work |
 | Windows native | ❌ Known gaps | Bash scripts won't run |
 | VS Code / Cursor / JetBrains | 🔲 Untested | PATH issues likely — use system-wide Node |
+
+---
+
+## Install via Codex CLI or Codex App
+
+Sonar ships a Codex plugin manifest, a `plugins/sonar` Codex bundle, and a repo-local marketplace entry.
+
+Today the two agent surfaces differ:
+
+- Claude Code: slash commands plus automatic hooks
+- Codex CLI/App: plugin bundle plus bundled skills; custom-agent templates are installable into `.codex/agents/`; hooks are manual and only partially portable today
+
+Hook portability details live in [CODEX_PORTABILITY.md](./CODEX_PORTABILITY.md).
+
+### Local install from this repo
+
+1. Open this repository in Codex CLI or Codex app.
+2. Restart Codex so it picks up the repo marketplace at `.agents/plugins/marketplace.json`, which points at `plugins/sonar`.
+3. Open the plugin directory:
+   - Codex app: open the Plugins panel
+   - Codex CLI: if your build exposes plugin UI commands, start `codex --enable plugins` and open plugins from the slash-command menu
+4. Choose the `FishStack Local` marketplace and install `Sonar`.
+5. Start a new thread and invoke the plugin:
+   - `@sonar`
+   - `@sonar sonar-codex-setup`
+   - `@sonar sonar-impact`
+   - `@sonar sonar-verify`
+   - `@sonar sonar-workspace`
+   - `@sonar sonar-upgrade`
+   - `@sonar sonar-install-agents`
+
+Codex CLI plugin installation is still build-dependent. In `codex-cli 0.114.0`, `codex --enable plugins` enables the feature flag but `/plugins` is still not a recognized slash command, so use the Codex app plugin panel or a newer CLI build that exposes plugin installation.
+
+### Recommended Codex setup
+
+After installing the plugin in a repository:
+
+1. Start a fresh Codex thread so the plugin skills are loaded.
+2. Run `@sonar sonar-codex-setup` for a guided setup pass.
+3. If `.sonar/` does not exist yet, run `@sonar sonar-crawl` to build the initial map.
+4. If `.sonar/` exists but is stale, run `@sonar sonar-update`.
+5. Run `@sonar sonar-upgrade` when you want to check whether the installed plugin is current.
+6. Optionally run `@sonar sonar-install-agents` to install Sonar custom-agent templates into `.codex/agents/`.
+7. Add the AGENTS.md snippet below so future Codex sessions know when to use Sonar.
+
+### How Sonar maps to Codex
+
+Codex plugins do not currently ship custom slash commands, so Sonar's Claude commands become Codex skills:
+
+| Claude Code | Codex |
+|-------------|-------|
+| `/sonar` | `@sonar` or `@sonar sonar` |
+| `/sonar explore` | `@sonar sonar-explore` |
+| `/sonar impact` | `@sonar sonar-impact` |
+| `/sonar verify` | `@sonar sonar-verify` |
+| `/sonar review-context` | `@sonar sonar-review-context` |
+| `/sonar status` | `@sonar sonar-status` |
+| `/sonar update` | `@sonar sonar-update` |
+| `/sonar crawl` | `@sonar sonar-crawl` |
+| `/sonar wiki` or `/sonar graph` | `@sonar sonar-workspace` |
+| Codex setup guidance | `@sonar sonar-codex-setup` |
+| Plugin update check | `@sonar sonar-upgrade` |
+| Sonar agent templates | `@sonar sonar-install-agents` |
+
+### Recommended AGENTS.md section
+
+Add this to the repository root `AGENTS.md`, or to a nested `AGENTS.md` if Sonar should apply only to part of a repo:
+
+```markdown
+## Sonar Usage
+
+- If `.sonar/meta.json` exists, use Sonar before substantial code changes, architectural decisions, or broad reviews.
+- For feature work or risky refactors, start with `@sonar sonar-impact "<task>"` to identify affected modules, flows, conventions, blast radius, and verification commands.
+- For general orientation, use `@sonar` or `@sonar sonar` before manually reading large parts of the codebase.
+- If `.sonar/` is missing, ask before running `@sonar sonar-crawl`; if the map is stale, use `@sonar sonar-update`.
+- Before finalizing a change, use `@sonar sonar-verify` to compare the implementation against mapped conventions and recommended checks.
+- For review prep, use `@sonar sonar-review-context` to gather relevant modules, flows, and invariants.
+- Use `@sonar sonar-upgrade` to check whether the installed Sonar Codex plugin is behind the public GitHub version.
+- If Sonar Codex custom agents are installed, use `sonar_mapper` for read-only mapping, `sonar_reviewer` for review, and `sonar_worker` for scoped implementation when explicit delegation is useful.
+- Treat Sonar output as guidance, not ground truth. If map freshness is questionable, verify claims against source files.
+```
+
+### Check for Sonar updates
+
+Use:
+
+```text
+@sonar sonar-upgrade
+```
+
+This compares the installed Codex plugin manifest with the public GitHub manifest at `goldfish-1x/sonar`.
+
+If an update is available and Sonar is installed from a git checkout:
+
+```bash
+git pull --ff-only
+```
+
+Then restart Codex, open a new thread, and verify:
+
+```text
+@sonar sonar-version
+```
+
+If Sonar is not installed from a git checkout, fetch the latest `https://github.com/goldfish-1x/sonar` repo, reopen it in Codex, and reinstall `Sonar` from the `FishStack Local` marketplace.
+
+### Install Sonar Codex custom agents
+
+Codex plugins can carry agent templates, but Codex only loads custom agents from `.codex/agents/` or `~/.codex/agents/`. To install Sonar's project-scoped Codex agents, invoke:
+
+```text
+@sonar sonar-install-agents
+```
+
+The installer copies these templates into `.codex/agents/`:
+
+- `sonar_mapper` on `gpt-5.4-mini` for read-only mapping
+- `sonar_reviewer` on `gpt-5.4` with high reasoning for reviews
+- `sonar_worker` on `gpt-5.4` for implementation work
+
+Existing project agent files are not overwritten unless the user explicitly asks for `--force`. Restart Codex after installing agents so the new custom agents are loaded.
+
+### Codex hook status
+
+Codex hook support is not equivalent to Claude's:
+
+- `SessionStart` and `UserPromptSubmit` are manually configurable in Codex
+- `Stop` is possible, but Sonar needs a Codex-specific wrapper
+- `PreToolUse` and `PostToolUse` currently only intercept `Bash`, so Sonar's edit-aware warnings and post-edit checks do not port directly
+
+For the current status and recommended rollout shape, see [CODEX_PORTABILITY.md](./CODEX_PORTABILITY.md).
